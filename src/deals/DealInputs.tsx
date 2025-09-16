@@ -19,6 +19,9 @@ import {
     useGetIdentity,
     useNotify,
 } from 'react-admin';
+import { useEffect, useState } from 'react';
+import { useFormContext, useWatch } from 'react-hook-form';
+import { supabase } from '../providers/supabase/supabase';
 import { useConfigurationContext } from '../root/ConfigurationContext';
 import { contactInputText, contactOptionText } from '../misc/ContactOption';
 
@@ -116,11 +119,41 @@ const DealLinkedToInputs = () => {
 };
 
 const DealMiscInputs = () => {
-    const { dealStages, dealCategories } = useConfigurationContext();
+    const { dealCategories } = useConfigurationContext();
+    const form = useFormContext();
+    const kind: string = (useWatch({ control: form.control, name: 'deal_kind' }) as any) || 'sales';
+    const [stageChoices, setStageChoices] = useState<{ id: string; name: string }[]>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            const { data } = await supabase
+                .from('deal_stage_sets')
+                .select('stage, position')
+                .eq('deal_kind', kind)
+                .order('position', { ascending: true });
+            if (!cancelled) {
+                setStageChoices((data || []).map((r: any) => ({ id: r.stage, name: r.stage })));
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    }, [kind]);
     return (
         <Stack gap={1} flex={1}>
             <Typography variant="subtitle1">Misc</Typography>
 
+            <SelectInput
+                source="deal_kind"
+                label="Deal kind"
+                choices={[
+                    { id: 'sales', name: 'Sales' },
+                    { id: 'procurement', name: 'Procurement' },
+                    { id: 'partnership', name: 'Partnership' },
+                ]}
+                defaultValue="sales"
+                helperText={false}
+            />
             <SelectInput
                 source="category"
                 label="Category"
@@ -130,12 +163,23 @@ const DealMiscInputs = () => {
                 }))}
                 helperText={false}
             />
-            <NumberInput
-                source="amount"
-                defaultValue={0}
-                validate={validateRequired}
-                helperText={false}
-            />
+            {kind === 'procurement' ? (
+                <NumberInput
+                    source="cost"
+                    label="Cost"
+                    defaultValue={0}
+                    validate={validateRequired}
+                    helperText={false}
+                />
+            ) : (
+                <NumberInput
+                    source="amount"
+                    label="Amount"
+                    defaultValue={0}
+                    validate={validateRequired}
+                    helperText={false}
+                />
+            )}
             <DateInput
                 source="expected_closing_date"
                 fullWidth
@@ -146,14 +190,16 @@ const DealMiscInputs = () => {
             />
             <SelectInput
                 source="stage"
-                choices={dealStages.map(stage => ({
-                    id: stage.value,
-                    name: stage.label,
-                }))}
+                label="Stage"
+                choices={stageChoices}
                 validate={validateRequired}
-                defaultValue="opportunity"
                 helperText={false}
             />
+            {kind === 'procurement' ? (
+                <ReferenceInput source="vendor_company_id" reference="companies">
+                    <AutocompleteInput optionText="name" helperText={false} label="Vendor" />
+                </ReferenceInput>
+            ) : null}
         </Stack>
     );
 };
