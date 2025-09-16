@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, Chip, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, Alert, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Button, Chip, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, Alert, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItemButton, ListItemText, CircularProgress } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askAssistant } from './askAssistant';
 import { useAssistantContext } from './AssistantContext';
 import { useAssistantStore, AssistantMessage, AssistantState } from './AssistantStore';
+import { supabase } from '../providers/supabase/supabase';
 
 export default function AssistantChat() {
   const messages = useAssistantStore((s: AssistantState) => s.messages);
@@ -19,6 +20,7 @@ export default function AssistantChat() {
   const [amountOpen, setAmountOpen] = useState(false);
   const [amountValue, setAmountValue] = useState('');
   const [fieldDialog, setFieldDialog] = useState<{ open: boolean; label: string; type: 'text'|'email'|'tel'; phrasePrefix: string; value: string }>({ open: false, label: '', type: 'text', phrasePrefix: '', value: '' });
+  const [companyDialog, setCompanyDialog] = useState<{ open: boolean; kind: 'company'|'vendor'; query: string; results: Array<{ id: number; name: string }>; loading: boolean }>({ open: false, kind: 'company', query: '', results: [], loading: false });
   
   const sendText = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -132,6 +134,7 @@ export default function AssistantChat() {
         const stages = mode === 'procurement' ? procurementStages : mode === 'sales' ? salesStages : [];
         const askText = lastAssistant!.content.toLowerCase();
         const isContactAsk = askText.includes('create a contact') || (askText.includes('first name') && askText.includes('last name') && askText.includes('email'));
+        const isDealAsk = askText.includes('create a deal') || askText.includes('title and company') || askText.includes('company?') || askText.includes('vendor');
         return (
           <Stack direction="row" spacing={1} flexWrap="wrap">
             <Chip label="Sales" size="small" onClick={() => sendText('Sales')} />
@@ -144,6 +147,12 @@ export default function AssistantChat() {
                 <Chip label="Last name" size="small" onClick={() => setFieldDialog({ open: true, label: 'Last name', type: 'text', phrasePrefix: 'Last name is', value: '' })} />
                 <Chip label="Email" size="small" onClick={() => setFieldDialog({ open: true, label: 'Email', type: 'email', phrasePrefix: 'Email is', value: '' })} />
                 <Chip label="Phone" size="small" onClick={() => setFieldDialog({ open: true, label: 'Phone', type: 'tel', phrasePrefix: 'Phone is', value: '' })} />
+              </>
+            )}
+            {isDealAsk && (
+              <>
+                <Chip label="Pick Company" size="small" onClick={() => setCompanyDialog({ open: true, kind: 'company', query: '', results: [], loading: false })} />
+                <Chip label="Pick Vendor" size="small" onClick={() => setCompanyDialog({ open: true, kind: 'vendor', query: '', results: [], loading: false })} />
               </>
             )}
             <Menu anchorEl={stageAnchorEl} open={!!stageAnchorEl} onClose={() => setStageAnchorEl(null)}>
@@ -209,6 +218,53 @@ export default function AssistantChat() {
                     setFieldDialog(s => ({ ...s, open: false }));
                   }
                 }}>OK</Button>
+              </DialogActions>
+            </Dialog>
+            <Dialog open={companyDialog.open} onClose={() => setCompanyDialog(s => ({ ...s, open: false }))} fullWidth maxWidth="sm">
+              <DialogTitle>{companyDialog.kind === 'company' ? 'Pick Company' : 'Pick Vendor'}</DialogTitle>
+              <DialogContent>
+                <TextField
+                  autoFocus
+                  margin="dense"
+                  label="Search companies"
+                  type="text"
+                  fullWidth
+                  value={companyDialog.query}
+                  onChange={async (e) => {
+                    const q = e.target.value;
+                    setCompanyDialog(s => ({ ...s, query: q, loading: true }));
+                    if (!q.trim()) {
+                      setCompanyDialog(s => ({ ...s, results: [], loading: false }));
+                      return;
+                    }
+                    const { data, error: _err } = await supabase
+                      .from('companies')
+                      .select('id,name')
+                      .ilike('name', `%${q}%`)
+                      .limit(15);
+                    setCompanyDialog(s => ({ ...s, results: data || [], loading: false }));
+                  }}
+                />
+                {companyDialog.loading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                    <CircularProgress size={20} />
+                  </Box>
+                ) : (
+                  <List dense>
+                    {companyDialog.results.map((c) => (
+                      <ListItemButton key={c.id} onClick={() => {
+                        const phrase = companyDialog.kind === 'company' ? `company_id is ${c.id}` : `vendor_company_id is ${c.id}`;
+                        setCompanyDialog(s => ({ ...s, open: false }));
+                        sendText(phrase);
+                      }}>
+                        <ListItemText primary={c.name} secondary={`ID ${c.id}`} />
+                      </ListItemButton>
+                    ))}
+                  </List>
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setCompanyDialog(s => ({ ...s, open: false }))}>Close</Button>
               </DialogActions>
             </Dialog>
           </Stack>
