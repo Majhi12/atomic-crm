@@ -19,25 +19,25 @@ jobs:
         timeout-minutes: 10
 
         env:
-      # Core secrets (with fallbacks to your configured names)
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      # Prefer SUPABASE_PROJECT_ID, fallback to SUPABASE_PROJECT_REF
-      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF }}
-      # Prefer SUPABASE_URL, fallback to PROJECT_URL
-      VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.PROJECT_URL }}
-      VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # Core secrets (with fallbacks to your configured names)
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          # Prefer SUPABASE_PROJECT_ID, fallback to SUPABASE_PROJECT_REF
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF }}
+          # Prefer SUPABASE_URL, fallback to PROJECT_URL
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.PROJECT_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
-      # Computed flags used in step conditions (string 'true'/'false')
-      CAN_DEPLOY_FUNCTIONS: ${{ (secrets.SUPABASE_ACCESS_TOKEN && (secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF)) && true }}
-      CAN_PUSH_DB: ${{ (secrets.SUPABASE_ACCESS_TOKEN && secrets.SUPABASE_DB_PASSWORD && (secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF)) && true }}
-      HAS_FRONTEND_ENV: ${{ ((secrets.SUPABASE_URL || secrets.PROJECT_URL) && secrets.SUPABASE_ANON_KEY) && true }}
-            VITE_IS_DEMO: ${{ vars.VITE_IS_DEMO }}
-            VITE_INBOUND_EMAIL: ${{ vars.VITE_INBOUND_EMAIL }}
-            PRODUCTION_REMOTE: https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEPLOY_REPOSITORY || github.repository }}
-            POSTMARK_WEBHOOK_USER: ${{secrets.POSTMARK_WEBHOOK_USER}}
-            POSTMARK_WEBHOOK_PASSWORD: ${{secrets.POSTMARK_WEBHOOK_PASSWORD}}
-            POSTMARK_WEBHOOK_AUTHORIZED_IPS: ${{secrets.POSTMARK_WEBHOOK_AUTHORIZED_IPS}}
+          # Computed flags used in step conditions (string 'true'/'false')
+          CAN_DEPLOY_FUNCTIONS: ${{ (secrets.SUPABASE_ACCESS_TOKEN && (secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF)) && true }}
+          CAN_PUSH_DB: ${{ (secrets.SUPABASE_ACCESS_TOKEN && secrets.SUPABASE_DB_PASSWORD && (secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF)) && true }}
+          HAS_FRONTEND_ENV: ${{ ((secrets.SUPABASE_URL || secrets.PROJECT_URL) && secrets.SUPABASE_ANON_KEY) && true }}
+          VITE_IS_DEMO: ${{ vars.VITE_IS_DEMO }}
+          VITE_INBOUND_EMAIL: ${{ vars.VITE_INBOUND_EMAIL }}
+          PRODUCTION_REMOTE: https://git:${{ secrets.DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ vars.DEPLOY_REPOSITORY || github.repository }}
+          POSTMARK_WEBHOOK_USER: ${{secrets.POSTMARK_WEBHOOK_USER}}
+          POSTMARK_WEBHOOK_PASSWORD: ${{secrets.POSTMARK_WEBHOOK_PASSWORD}}
+          POSTMARK_WEBHOOK_AUTHORIZED_IPS: ${{secrets.POSTMARK_WEBHOOK_AUTHORIZED_IPS}}
 
         steps:
             - name: 📥 Checkout repo
@@ -74,7 +74,7 @@ jobs:
               name: 📡 Push supabase migrations
               run: npx supabase db push
 
-            - if: ${{ env.IS_SUPABASE_CONFIGURED && env.POSTMARK_WEBHOOK_USER && env.POSTMARK_WEBHOOK_PASSWORD && env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}
+            - if: ${{ env.CAN_DEPLOY_FUNCTIONS == 'true' && env.POSTMARK_WEBHOOK_USER && env.POSTMARK_WEBHOOK_PASSWORD && env.POSTMARK_WEBHOOK_AUTHORIZED_IPS }}
               name: 📡 Push supabase postmark webhook user secret
               run: |
                   npx supabase secrets set POSTMARK_WEBHOOK_USER=${{ env.POSTMARK_WEBHOOK_USER }}
