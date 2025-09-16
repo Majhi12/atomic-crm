@@ -149,15 +149,29 @@ serve(async (req) => {
         const et = args.entity_type ? String(args.entity_type) : undefined;
         const eid = args.entity_id ? Number(args.entity_id) : undefined;
         if (!q && !et && !eid) { toolResult = { error: 'provide query or entity filter' }; break; }
-        let query = supabase
-          .from('notes')
-          .select('id, entity_type, entity_id, text, created_at')
-          .order('created_at', { ascending: false })
-          .limit(50);
-        if (q) query = query.ilike('text', `%${q}%`);
-        if (et) query = query.eq('entity_type', et);
-        if (eid) query = query.eq('entity_id', eid);
-        toolResult = await query;
+        const results: Array<{ entity_type: 'contact'|'deal'; entity_id: number; text: string; created_at: string }>=[];
+        // Contact notes
+        if (!et || et === 'contact') {
+          let q1 = supabase.from('contactNotes').select('contact_id, text, date').order('date', { ascending: false }).limit(50);
+          if (q) q1 = q1.ilike('text', `%${q}%`);
+          if (eid) q1 = q1.eq('contact_id', eid);
+          const r1 = await q1;
+          if (!r1.error) {
+            for (const n of r1.data || []) results.push({ entity_type: 'contact', entity_id: n.contact_id, text: n.text, created_at: n.date });
+          }
+        }
+        // Deal notes
+        if (!et || et === 'deal') {
+          let q2 = supabase.from('dealNotes').select('deal_id, text, date').order('date', { ascending: false }).limit(50);
+          if (q) q2 = q2.ilike('text', `%${q}%`);
+          if (eid) q2 = q2.eq('deal_id', eid);
+          const r2 = await q2;
+          if (!r2.error) {
+            for (const n of r2.data || []) results.push({ entity_type: 'deal', entity_id: n.deal_id, text: n.text, created_at: n.date });
+          }
+        }
+        results.sort((a,b)=> a.created_at < b.created_at ? 1 : -1);
+        toolResult = { data: results };
         break; }
       case 'create_contact': {
         try {
@@ -246,7 +260,7 @@ serve(async (req) => {
           deal_kind,
           company_id: args.company_id,
           vendor_company_id: args.vendor_company_id ?? null,
-          contact_id: args.contact_id ?? null,
+          contact_ids: args.contact_id ? [args.contact_id] : null,
           amount:     args.amount ?? null,
           cost:       args.cost ?? null,
           stage,
@@ -314,8 +328,8 @@ serve(async (req) => {
         }
         let stageInfo = '';
         if (et === 'deal') {
-          const d = await supabase.from('deals').select('title, stage, deal_kind').eq('id', eid).maybeSingle();
-          if (d.data) stageInfo = `Deal: ${d.data.title} | Kind: ${d.data.deal_kind} | Stage: ${d.data.stage}`;
+          const d = await supabase.from('deals').select('name, stage, deal_kind').eq('id', eid).maybeSingle();
+          if (d.data) stageInfo = `Deal: ${d.data.name} | Kind: ${d.data.deal_kind} | Stage: ${d.data.stage}`;
         }
         const context = [
           stageInfo,
