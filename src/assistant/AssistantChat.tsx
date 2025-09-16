@@ -19,20 +19,11 @@ export default function AssistantChat() {
     setInput('');
     setLoading(true);
     try {
-      // Build the URL for the Edge Function
-      const url = new URL('/functions/v1/assistant', supabase?.['url'] ?? window.location.origin);
-      const res = await fetch(url.toString(), {
+      const { data, error } = await supabase.functions.invoke<any>('assistant', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Include the current session JWT so the function can authorize the user
-          ...(await supabase.auth.getSession()).data.session?.access_token
-            ? { Authorization: `Bearer ${(await supabase.auth.getSession()).data.session!.access_token}` }
-            : {},
-        },
-        body: JSON.stringify({ messages: next }),
+        body: { messages: next },
       });
-      const data = await res.json();
+      if (error) throw error;
       const content = data?.content ?? (typeof data === 'string' ? data : JSON.stringify(data));
       setMessages(m => [...m, { role: 'assistant', content }]);
     } catch (e: any) {

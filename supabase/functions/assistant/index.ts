@@ -1,18 +1,23 @@
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import OpenAI from "https://esm.sh/openai@4.56.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.3";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const openai = new OpenAI({ apiKey: Deno.env.get("OPENAI_API_KEY")! });
+const apiKey = Deno.env.get('OPENAI_API_KEY');
+const openai = new OpenAI({ apiKey: apiKey ?? '' });
 
 serve(async (req) => {
-  const authHeader = req.headers.get("Authorization") || "";
+  if (!apiKey) {
+    return new Response('OPENAI_API_KEY is not set', { status: 500 });
+  }
+  const authHeader = req.headers.get('Authorization') || '';
   const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    Deno.env.get("SUPABASE_URL") ?? Deno.env.get("PROJECT_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY")!,
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) return new Response("Unauthorized", { status: 401 });
+  if (authErr || !user) return new Response('Unauthorized', { status: 401 });
 
   const body = await req.json();
   const { messages } = body as { messages: Array<{role:"user"|"assistant"|"system"; content:string}> };
@@ -27,8 +32,9 @@ serve(async (req) => {
   ];
 
   const sys = {
-    role: "system" as const,
-    content: "You are the in-app CRM assistant. When a user asks to find/add contacts, notes, or deals, call tools. Deals are sales opportunities with stage, amount, company, contact."
+    role: 'system' as const,
+    content:
+      'You are the in-app CRM assistant. When a user asks to find/add contacts, notes, or deals, call tools. Deals are sales opportunities with stage, amount, company, contact.',
   };
 
   const chat = await openai.chat.completions.create({
@@ -45,13 +51,14 @@ serve(async (req) => {
   let toolResult: unknown;
 
   switch (toolCall.function.name) {
-    case "search_contacts":
-      toolResult = await supabase.from("contacts")
-        .select("id, first_name, last_name, email, company_id")
-        .ilike("first_name", `%${args.query}%`);
+    case 'search_contacts':
+      toolResult = await supabase
+        .from('contacts_summary')
+        .select('id, first_name, last_name, email, company_id')
+        .ilike('first_name', `%${args.query}%`);
       break;
-    case "create_contact":
-      toolResult = await supabase.from("contacts").insert({
+    case 'create_contact':
+      toolResult = await supabase.from('contacts').insert({
         first_name: args.first_name,
         last_name:  args.last_name,
         email:      args.email,
@@ -60,31 +67,33 @@ serve(async (req) => {
         owner_id:   user.id
       }).select().single();
       break;
-    case "add_note":
-      toolResult = await supabase.from("notes").insert({
+    case 'add_note':
+      toolResult = await supabase.from('notes').insert({
         entity_type: args.entity_type,
         entity_id:   args.entity_id,
         text:        args.text,
         author_id:   user.id
       }).select().single();
       break;
-    case "create_deal":
-      toolResult = await supabase.from("deals").insert({
+    case 'create_deal':
+      toolResult = await supabase.from('deals').insert({
         title:      args.title,
         company_id: args.company_id,
         contact_id: args.contact_id ?? null,
         amount:     args.amount ?? null,
-        stage:      args.stage ?? "lead",
+        stage:      args.stage ?? 'lead',
         owner_id:   user.id
       }).select().single();
       break;
-    case "update_deal_stage":
-      toolResult = await supabase.from("deals")
-        .update({ stage: args.stage }).eq("id", args.deal_id)
+    case 'update_deal_stage':
+      toolResult = await supabase
+        .from('deals')
+        .update({ stage: args.stage })
+        .eq('id', args.deal_id)
         .select().single();
       break;
-    case "pipeline_summary":
-      toolResult = await supabase.rpc("pipeline_summary_fn");
+    case 'pipeline_summary':
+      toolResult = await supabase.rpc('pipeline_summary_fn');
       break;
   }
 
