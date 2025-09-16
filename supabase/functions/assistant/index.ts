@@ -2,6 +2,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import OpenAI from "https://esm.sh/openai@4.56.0";
+import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const apiKey = Deno.env.get('OPENAI_API_KEY');
@@ -34,7 +35,7 @@ serve(async (req) => {
 
   const tools = [
     { type: "function", function: { name: "search_contacts", description: "Full-text search contacts by name/email/company.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
-    { type: "function", function: { name: "create_contact", description: "Create a new contact.", parameters: { type: "object", properties: { first_name: { type: "string" }, last_name: { type: "string" }, email: { type: "string" }, phone: { type: "string", nullable: true }, company_id: { type: "number", nullable: true } }, required: ["first_name","last_name","email"] } } },
+  { type: "function", function: { name: "create_contact", description: "Create a new contact (gracefully accepts minimal details).", parameters: { type: "object", properties: { first_name: { type: "string", nullable: true }, last_name: { type: "string", nullable: true }, email: { type: "string", nullable: true }, phone: { type: "string", nullable: true }, company_id: { type: "number", nullable: true }, company_name: { type: "string", nullable: true }, notes: { type: "string", nullable: true } }, required: [] } } },
     { type: "function", function: { name: "add_note", description: "Attach a note to a contact/company/deal.", parameters: { type: "object", properties: { entity_type: { enum: ["contact","company","deal"] }, entity_id: { type: "number" }, text: { type: "string" } }, required: ["entity_type","entity_id","text"] } } },
     { type: "function", function: { name: "search_notes", description: "Search notes by text and/or entity filter.", parameters: { type: "object", properties: { query: { type: "string", nullable: true }, entity_type: { enum: ["contact","company","deal"], nullable: true }, entity_id: { type: "number", nullable: true } }, required: [] } } },
     { type: "function", function: { name: "create_deal", description: "Create a new deal/opportunity (sales or procurement).",
@@ -90,6 +91,31 @@ serve(async (req) => {
   };
 
   const history: Array<any> = [sys, ...messages];
+
+  async function getCurrentSalesId() {
+    const me = await supabase.from('sales').select('id').eq('user_id', user.id).maybeSingle();
+    return me.data?.id as number | undefined;
+  }
+
+  async function upsertCompanyByName(name: string) {
+    const existing = await supabase.from('companies').select('id').ilike('name', name).maybeSingle();
+    if (existing.data?.id) return existing.data.id as number;
+    const inserted = await supabase.from('companies').insert({ name }).select('id').single();
+    if (inserted.error) throw inserted.error;
+    return inserted.data.id as number;
+  }
+
+  const CreateContact = z.object({
+    first_name: z.string().trim().optional(),
+    last_name: z.string().trim().optional(),
+    email: z.string().trim().email().optional(),
+    phone: z.string().trim().min(5).optional(),
+    company_id: z.number().optional(),
+    company_name: z.string().trim().optional(),
+    notes: z.string().optional(),
+  }).refine(v => (v.first_name || v.last_name || v.company_name) && (v.email || v.phone), {
+    message: 'Provide at least a name/company and one of email or phone.'
+  });
   let turns = 0;
   while (turns < 3) {
     const chat = await openai.chat.completions.create({
@@ -110,11 +136,11 @@ serve(async (req) => {
       case 'search_contacts': {
         const q = String(args.query || '').trim();
         if (!q) { toolResult = { error: 'query required' }; break; }
-        // Basic search on first_name/last_name/email
+        // Basic search on first_name/last_name/email_fts
         const res = await supabase
           .from('contacts_summary')
-          .select('id, first_name, last_name, email, company_id')
-          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
+          .select('id, first_name, last_name, email_jsonb, company_id, company_name')
+          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email_fts.ilike.%${q}%`)
           .limit(25);
         toolResult = res;
         break; }
@@ -134,33 +160,68 @@ serve(async (req) => {
         toolResult = await query;
         break; }
       case 'create_contact': {
-        const first = String(args.first_name || '').trim();
-        const last  = String(args.last_name || '').trim();
-        const email = String(args.email || '').trim();
-        if (!first || !last || !email) {
-          toolResult = { ask: 'To create a contact, please provide first name, last name, and email.' };
-          break;
+        try {
+          const parsed = CreateContact.parse({
+            first_name: args.first_name,
+            last_name: args.last_name,
+            email: args.email,
+            phone: args.phone,
+            company_id: args.company_id,
+            company_name: args.company_name,
+            notes: args.notes,
+          });
+          let companyId = parsed.company_id;
+          if (!companyId && parsed.company_name) {
+            companyId = await upsertCompanyByName(parsed.company_name);
+          }
+          const first = parsed.first_name ?? 'Vendor';
+          const last  = parsed.last_name  ?? 'Contact';
+          const salesId = await getCurrentSalesId();
+          const res = await supabase.from('contacts').insert({
+            first_name: first,
+            last_name: last,
+            email_jsonb: parsed.email ? [{ email: parsed.email, type: 'Other' }] : null,
+            phone_jsonb: parsed.phone ? [{ number: parsed.phone, type: 'Other' }] : null,
+            company_id: companyId ?? null,
+            sales_id: salesId ?? null,
+          }).select().single();
+          if (res.error) { toolResult = res; break; }
+          // Optional: attach note to contact using contactNotes table
+          if (parsed.notes) {
+            const salesId2 = salesId ?? await getCurrentSalesId();
+            await supabase.from('contactNotes').insert({
+              contact_id: res.data.id,
+              text: parsed.notes,
+              sales_id: salesId2 ?? null,
+            });
+          }
+          toolResult = { created: res.data };
+        } catch (e) {
+          toolResult = { needs_more: true, ask: '[ASK] Need more info: Provide at least a name/company and one of email or phone.' };
         }
-        toolResult = await supabase.from('contacts').insert({
-          first_name: first,
-          last_name:  last,
-          email,
-          phone:      args.phone ?? null,
-          company_id: args.company_id ?? null,
-          owner_id:   user.id
-        }).select().single();
         break; }
       case 'add_note':
         if (!args?.entity_type || !args?.entity_id || !String(args?.text || '').trim()) {
-          toolResult = { ask: 'Which entity should I attach the note to (contact/company/deal and its id)? What should the note say?' };
+          toolResult = { ask: 'Which entity should I attach the note to (contact or deal and its id)? What should the note say?' };
           break;
         }
-        toolResult = await supabase.from('notes').insert({
-          entity_type: args.entity_type,
-          entity_id:   args.entity_id,
-          text:        args.text,
-          author_id:   user.id
-        }).select().single();
+        if (args.entity_type === 'contact') {
+          const salesId = await getCurrentSalesId();
+          toolResult = await supabase.from('contactNotes').insert({
+            contact_id: args.entity_id,
+            text: args.text,
+            sales_id: salesId ?? null,
+          }).select().single();
+        } else if (args.entity_type === 'deal') {
+          const salesId = await getCurrentSalesId();
+          toolResult = await supabase.from('dealNotes').insert({
+            deal_id: args.entity_id,
+            text: args.text,
+            sales_id: salesId ?? null,
+          }).select().single();
+        } else {
+          toolResult = { ask: 'Company notes are not supported. Attach note to a related contact or deal instead.' };
+        }
         break;
       case 'create_deal': {
         const deal_kind = String(args.deal_kind || 'sales');
@@ -181,7 +242,7 @@ serve(async (req) => {
           stage = st.data?.stage || (deal_kind === 'procurement' ? 'Sourcing' : 'Lead');
         }
         const payload: any = {
-          title:      args.title,
+          name:       args.title,
           deal_kind,
           company_id: args.company_id,
           vendor_company_id: args.vendor_company_id ?? null,
@@ -189,7 +250,7 @@ serve(async (req) => {
           amount:     args.amount ?? null,
           cost:       args.cost ?? null,
           stage,
-          owner_id:   user.id
+          // sales_id: optional, inferred via triggers/UI elsewhere
         };
         toolResult = await supabase.from('deals').insert(payload).select().single();
         break; }
@@ -234,14 +295,23 @@ serve(async (req) => {
       case 'suggest_followup_email': {
         const et = String(args.entity_type);
         const eid = Number(args.entity_id);
-        // Fetch last few notes
-        const notes = await supabase
-          .from('notes')
-          .select('text, created_at')
-          .eq('entity_type', et)
-          .eq('entity_id', eid)
-          .order('created_at', { ascending: false })
-          .limit(5);
+        // Fetch last few notes from appropriate table
+        let notes: any = { data: [] };
+        if (et === 'deal') {
+          notes = await supabase
+            .from('dealNotes')
+            .select('text, date')
+            .eq('deal_id', eid)
+            .order('date', { ascending: false })
+            .limit(5);
+        } else if (et === 'contact') {
+          notes = await supabase
+            .from('contactNotes')
+            .select('text, date')
+            .eq('contact_id', eid)
+            .order('date', { ascending: false })
+            .limit(5);
+        }
         let stageInfo = '';
         if (et === 'deal') {
           const d = await supabase.from('deals').select('title, stage, deal_kind').eq('id', eid).maybeSingle();
@@ -250,7 +320,7 @@ serve(async (req) => {
         const context = [
           stageInfo,
           'Recent notes:',
-          ...(notes.data?.map(n => `- ${n.text}`) || [])
+          ...(notes.data?.map((n: any) => `- ${n.text}`) || [])
         ].filter(Boolean).join('\n');
 
         const draft = await openai.chat.completions.create({
