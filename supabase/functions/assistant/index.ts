@@ -8,8 +8,16 @@ const apiKey = Deno.env.get('OPENAI_API_KEY');
 const openai = new OpenAI({ apiKey: apiKey ?? '' });
 
 serve(async (req) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  } as const;
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
   if (!apiKey) {
-    return new Response('OPENAI_API_KEY is not set', { status: 500 });
+    return new Response('OPENAI_API_KEY is not set', { status: 500, headers: corsHeaders });
   }
   const authHeader = req.headers.get('Authorization') || '';
   const supabase = createClient(
@@ -18,7 +26,7 @@ serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !user) return new Response('Unauthorized', { status: 401 });
+  if (authErr || !user) return new Response('Unauthorized', { status: 401, headers: corsHeaders });
 
   const body = await req.json();
   const { messages } = body as { messages: Array<{role:"user"|"assistant"|"system"; content:string}> };
@@ -46,7 +54,7 @@ serve(async (req) => {
 
   const toolCall = chat.choices[0].message.tool_calls?.[0];
   if (!toolCall)
-    return new Response(JSON.stringify(chat.choices[0].message), { headers: { "Content-Type": "application/json" }});
+    return new Response(JSON.stringify(chat.choices[0].message), { headers: { ...corsHeaders, "Content-Type": "application/json" }});
 
   const args = JSON.parse(toolCall.function.arguments || "{}");
   let toolResult: unknown;
@@ -108,7 +116,7 @@ serve(async (req) => {
   });
 
   return new Response(JSON.stringify(followup.choices[0].message), {
-    headers: { "Content-Type": "application/json" }
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
   });
 });
 // ci: auto-deploy trigger (noop change)
