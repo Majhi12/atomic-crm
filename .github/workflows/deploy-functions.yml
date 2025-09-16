@@ -30,6 +30,9 @@ jobs:
           if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
             supabase secrets set --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}"
           fi
+          if [ -n "${{ secrets.TAVILY_API_KEY }}" ]; then
+            supabase secrets set --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} "TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}"
+          fi
 
       - name: Deploy Edge Functions
         env:
