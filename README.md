@@ -93,3 +93,37 @@ You can add your own unit tests powered by Jest anywhere in the `src` directory.
 ## License
 
 This project is licensed under the MIT License, courtesy of [Marmelab](https://marmelab.com). See the [LICENSE.md](./LICENSE.md) file for details.
+
+## Assistant (Edge Function) Setup
+
+Environment variables (no secrets in source):
+
+- `OPENAI_API_KEY`
+- `SUPABASE_URL` (project URL)
+- `SUPABASE_SERVICE_ROLE_KEY`
+- Optional: `TAVILY_API_KEY` (enable web search in assistant)
+
+Local function env file (not committed): `supabase/functions/assistant/.env`
+
+```
+OPENAI_API_KEY=sk-***
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=***
+# Optional
+TAVILY_API_KEY=***
+```
+
+Cloud variables: Supabase Dashboard → Project Settings → Functions → Environment Variables
+
+Local run (Edge Function):
+
+```powershell
+npx supabase functions serve assistant --no-verify-jwt
+curl -i -X POST "$env:VITE_SUPABASE_URL/functions/v1/assistant" -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"hello"}]}'
+```
+
+Deploy:
+
+```powershell
+npx supabase functions deploy assistant --project-ref <ref>
+```

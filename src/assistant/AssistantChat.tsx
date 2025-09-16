@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
-import { supabase } from '../providers/supabase/supabase';
+import { askAssistant } from './askAssistant';
 
 export default function AssistantChat() {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
@@ -19,15 +19,12 @@ export default function AssistantChat() {
     setInput('');
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke<any>('assistant', {
-        method: 'POST',
-        body: { messages: next },
-      });
-      if (error) throw error;
+      const data = await askAssistant(next);
       const content = data?.content ?? (typeof data === 'string' ? data : JSON.stringify(data));
       setMessages(m => [...m, { role: 'assistant', content }]);
     } catch (e: any) {
-      setMessages(m => [...m, { role: 'assistant', content: 'Sorry, something went wrong.' }]);
+      const msg = e?.message || e?.toString?.() || 'Unknown error';
+      setMessages(m => [...m, { role: 'assistant', content: `Sorry, something went wrong. ${msg}` }]);
     } finally {
       setLoading(false);
     }

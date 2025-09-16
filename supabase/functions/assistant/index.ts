@@ -70,6 +70,7 @@ serve(async (req) => {
         '- For CRM queries (find contacts, notes, deals), prefer CRM tools first.',
         '- Suggest deal creation when user intent implies an opportunity; ask for amount/stage if missing.',
         '- Keep answers concise, then offer next actions as options.',
+        'Deals can be sales (revenue) or procurement (spend). Choose the kind based on user wording. Sales stages: Lead→Qualified→Proposal→Won/Lost. Procurement stages: Sourcing→RFQ→Negotiation→Ordered→Received. Use tools for database actions; be concise; ask one brief clarifying question if needed.',
       ].join(' '),
   };
 
@@ -102,6 +103,21 @@ serve(async (req) => {
           .limit(25);
         toolResult = res;
         break; }
+      case 'search_notes': {
+        const q = String(args.query || '').trim();
+        const et = args.entity_type ? String(args.entity_type) : undefined;
+        const eid = args.entity_id ? Number(args.entity_id) : undefined;
+        if (!q && !et && !eid) { toolResult = { error: 'provide query or entity filter' }; break; }
+        let query = supabase
+          .from('notes')
+          .select('id, entity_type, entity_id, text, created_at')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (q) query = query.ilike('text', `%${q}%`);
+        if (et) query = query.eq('entity_type', et);
+        if (eid) query = query.eq('entity_id', eid);
+        toolResult = await query;
+        break; }
       case 'create_contact':
         toolResult = await supabase.from('contacts').insert({
           first_name: args.first_name,
@@ -120,16 +136,33 @@ serve(async (req) => {
           author_id:   user.id
         }).select().single();
         break;
-      case 'create_deal':
-        toolResult = await supabase.from('deals').insert({
+      case 'create_deal': {
+        const deal_kind = String(args.deal_kind || 'sales');
+        let stage = args.stage ? String(args.stage) : undefined;
+        if (!stage) {
+          // pick first stage for kind
+          const st = await supabase
+            .from('deal_stage_sets')
+            .select('stage, position')
+            .eq('deal_kind', deal_kind)
+            .order('position', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          stage = st.data?.stage || (deal_kind === 'procurement' ? 'Sourcing' : 'Lead');
+        }
+        const payload: any = {
           title:      args.title,
+          deal_kind,
           company_id: args.company_id,
+          vendor_company_id: args.vendor_company_id ?? null,
           contact_id: args.contact_id ?? null,
           amount:     args.amount ?? null,
-          stage:      args.stage ?? 'lead',
+          cost:       args.cost ?? null,
+          stage,
           owner_id:   user.id
-        }).select().single();
-        break;
+        };
+        toolResult = await supabase.from('deals').insert(payload).select().single();
+        break; }
       case 'update_deal_stage':
         toolResult = await supabase
           .from('deals')
@@ -137,9 +170,64 @@ serve(async (req) => {
           .eq('id', args.deal_id)
           .select().single();
         break;
-      case 'pipeline_summary':
-        toolResult = await supabase.rpc('pipeline_summary_fn');
-        break;
+      case 'pipeline_summary': {
+        const kind = args.kind ? String(args.kind) : undefined;
+        const tw = String(args.time_window || 'month');
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        // fetch deals in window
+        let q = supabase
+          .from('deals')
+          .select('id, deal_kind, amount, cost, stage, created_at')
+          .gte('created_at', start.toISOString())
+          .lt('created_at', end.toISOString())
+          .limit(1000);
+        if (kind) q = q.eq('deal_kind', kind);
+        const resp = await q;
+        if (resp.error) { toolResult = resp; break; }
+        const rows = resp.data || [];
+        const agg: Record<string, { count: number; total_amount: number; total_cost: number }> = {};
+        for (const r of rows) {
+          const k = r.deal_kind || 'unknown';
+          if (!agg[k]) agg[k] = { count: 0, total_amount: 0, total_cost: 0 };
+          agg[k].count += 1;
+          agg[k].total_amount += Number(r.amount || 0);
+          agg[k].total_cost += Number(r.cost || 0);
+        }
+        toolResult = { window: tw, by_kind: agg };
+        break; }
+      case 'suggest_followup_email': {
+        const et = String(args.entity_type);
+        const eid = Number(args.entity_id);
+        // Fetch last few notes
+        const notes = await supabase
+          .from('notes')
+          .select('text, created_at')
+          .eq('entity_type', et)
+          .eq('entity_id', eid)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        let stageInfo = '';
+        if (et === 'deal') {
+          const d = await supabase.from('deals').select('title, stage, deal_kind').eq('id', eid).maybeSingle();
+          if (d.data) stageInfo = `Deal: ${d.data.title} | Kind: ${d.data.deal_kind} | Stage: ${d.data.stage}`;
+        }
+        const context = [
+          stageInfo,
+          'Recent notes:',
+          ...(notes.data?.map(n => `- ${n.text}`) || [])
+        ].filter(Boolean).join('\n');
+
+        const draft = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'Write a concise 4-6 sentence professional follow-up email with a clear CTA. Return only the email body, no preface.' },
+            { role: 'user', content: `Context:\n${context}\n\nDraft the follow-up email:` }
+          ]
+        });
+        toolResult = { draft: draft.choices[0]?.message?.content || '' };
+        break; }
       case 'web_search': {
         if (!tavilyKey) { toolResult = { error: 'web_search unavailable' }; break; }
         const body = {
