@@ -1,4 +1,5 @@
 import { CRM } from './root/CRM';
+import { dataProvider as fakerDataProvider, authProvider as fakerAuthProvider } from './providers/fakerest';
 
 /**
  * Application entry point
@@ -25,6 +26,18 @@ import { CRM } from './root/CRM';
  *    />
  * );
  */
-const App = () => <CRM />;
+const App = () => {
+	const useFake = import.meta.env.VITE_USE_FAKEREST === 'true';
+	return (
+		<CRM
+			{...(useFake
+				? {
+					  dataProvider: fakerDataProvider,
+					  authProvider: fakerAuthProvider,
+				  }
+				: {})}
+		/>
+	);
+};
 
 export default App;
