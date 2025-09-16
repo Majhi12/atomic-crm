@@ -199,7 +199,11 @@ serve(async (req) => {
             company_id: companyId ?? null,
             sales_id: salesId ?? null,
           }).select().single();
-          if (res.error) { toolResult = res; break; }
+          if (res.error) {
+            console.error('create_contact error', res.error);
+            toolResult = { error: res.error.message || 'Failed to create contact', code: res.error.code, details: res.error.details };
+            break;
+          }
           // Optional: attach note to contact using contactNotes table
           if (parsed.notes) {
             const salesId2 = salesId ?? await getCurrentSalesId();
@@ -210,8 +214,9 @@ serve(async (req) => {
             });
           }
           toolResult = { created: res.data };
-        } catch (e) {
-          toolResult = { needs_more: true, ask: '[ASK] Need more info: Provide at least a name/company and one of email or phone.' };
+        } catch (e: any) {
+          console.error('create_contact exception', e);
+          toolResult = { needs_more: true, ask: `[ASK] Need more info: ${e?.message || 'Provide at least a name/company and one of email or phone.'}` };
         }
         break; }
       case 'add_note':
@@ -221,18 +226,20 @@ serve(async (req) => {
         }
         if (args.entity_type === 'contact') {
           const salesId = await getCurrentSalesId();
-          toolResult = await supabase.from('contactNotes').insert({
+          const ins = await supabase.from('contactNotes').insert({
             contact_id: args.entity_id,
             text: args.text,
             sales_id: salesId ?? null,
           }).select().single();
+          if (ins.error) { console.error('add_note contact error', ins.error); toolResult = { error: ins.error.message, code: ins.error.code }; } else { toolResult = ins; }
         } else if (args.entity_type === 'deal') {
           const salesId = await getCurrentSalesId();
-          toolResult = await supabase.from('dealNotes').insert({
+          const ins = await supabase.from('dealNotes').insert({
             deal_id: args.entity_id,
             text: args.text,
             sales_id: salesId ?? null,
           }).select().single();
+          if (ins.error) { console.error('add_note deal error', ins.error); toolResult = { error: ins.error.message, code: ins.error.code }; } else { toolResult = ins; }
         } else {
           toolResult = { ask: 'Company notes are not supported. Attach note to a related contact or deal instead.' };
         }
@@ -266,18 +273,26 @@ serve(async (req) => {
           stage,
           // sales_id: optional, inferred via triggers/UI elsewhere
         };
-        toolResult = await supabase.from('deals').insert(payload).select().single();
+        {
+          const ins = await supabase.from('deals').insert(payload).select().single();
+          if (ins.error) { console.error('create_deal error', ins.error); toolResult = { error: ins.error.message, code: ins.error.code }; }
+          else { toolResult = ins; }
+        }
         break; }
       case 'update_deal_stage': {
         if (!args?.deal_id || !args?.stage) {
           toolResult = { ask: 'Which deal (id) should I move and to what stage?' };
           break;
         }
-        toolResult = await supabase
+        {
+        const upd = await supabase
           .from('deals')
           .update({ stage: args.stage })
           .eq('id', args.deal_id)
           .select().single();
+        if (upd.error) { console.error('update_deal_stage error', upd.error); toolResult = { error: upd.error.message, code: upd.error.code }; }
+        else { toolResult = upd; }
+        }
         break; }
       case 'pipeline_summary': {
         const kind = args.kind ? String(args.kind) : undefined;
