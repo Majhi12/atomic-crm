@@ -6,6 +6,7 @@ import { askAssistant } from './askAssistant';
 import { useAssistantContext } from './AssistantContext';
 import { useAssistantStore, AssistantMessage, AssistantState } from './AssistantStore';
 import { supabase } from '../providers/supabase/supabase';
+import MissingInfoModal from './MissingInfoModal';
 
 export default function AssistantChat() {
   const messages = useAssistantStore((s: AssistantState) => s.messages);
@@ -24,6 +25,8 @@ export default function AssistantChat() {
   const [dealKindToggle, setDealKindToggle] = useState<'sales'|'procurement'>(() => (mode === 'procurement' ? 'procurement' : 'sales'));
   const [costOpen, setCostOpen] = useState(false);
   const [costValue, setCostValue] = useState('');
+  const [missingOpen, setMissingOpen] = useState(false);
+  const [missingInitial, setMissingInitial] = useState<{ company_name?: string; email?: string; phone?: string }>({});
   
   const sendText = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -100,6 +103,11 @@ export default function AssistantChat() {
                       <Stack direction="row" spacing={1}>
                         <Button size="small" variant="contained" disabled={loading} onClick={() => sendText('Yes')}>Approve</Button>
                         <Button size="small" variant="outlined" disabled={loading} onClick={() => sendText('No')}>Skip</Button>
+                      </Stack>
+                    )}
+                    {!isConfirm && (
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                        <Button size="small" variant="contained" onClick={() => { setMissingInitial({}); setMissingOpen(true); }}>Fill Missing Info</Button>
                       </Stack>
                     )}
                   </Alert>
@@ -279,18 +287,22 @@ export default function AssistantChat() {
                     if (companyDialog.kind === 'contact') {
                       const { data, error: _err } = await supabase
                         .from('contacts_summary')
-                        .select('id, first_name, last_name, email')
-                        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
+                        .select('id, first_name, last_name, email_jsonb, email_fts')
+                        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email_fts.ilike.%${q}%`)
                         .limit(15);
-                      const results = (data || []).map((c: any) => ({ id: c.id, name: `${c.first_name} ${c.last_name}${c.email ? ` (${c.email})` : ''}` }));
+                      const results = (data || []).map((c: any) => {
+                        const email = Array.isArray(c.email_jsonb) && c.email_jsonb[0]?.email ? c.email_jsonb[0].email : '';
+                        const full = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+                        return { id: c.id, name: `${full}${email ? ` (${email})` : ''}` };
+                      });
                       setCompanyDialog(s => ({ ...s, results, loading: false }));
                     } else if (companyDialog.kind === 'deal') {
                       const { data, error: _err } = await supabase
                         .from('deals')
-                        .select('id, title, deal_kind')
-                        .ilike('title', `%${q}%`)
+                        .select('id, name, deal_kind')
+                        .ilike('name', `%${q}%`)
                         .limit(15);
-                      const results = (data || []).map((d: any) => ({ id: d.id, name: `${d.title}${d.deal_kind ? ` [${d.deal_kind}]` : ''}` }));
+                      const results = (data || []).map((d: any) => ({ id: d.id, name: `${d.name}${d.deal_kind ? ` [${d.deal_kind}]` : ''}` }));
                       setCompanyDialog(s => ({ ...s, results, loading: false }));
                     } else {
                       const { data, error: _err } = await supabase
@@ -357,6 +369,19 @@ export default function AssistantChat() {
           </Stack>
         );
       })()}
+      <MissingInfoModal
+        open={missingOpen}
+        initial={missingInitial}
+        onCancel={() => setMissingOpen(false)}
+        onConfirm={(vals) => {
+          setMissingOpen(false);
+          const parts = [] as string[];
+          if (vals.company_name?.trim()) parts.push(`Company name is ${vals.company_name.trim()}`);
+          if (vals.email?.trim()) parts.push(`Email is ${vals.email.trim()}`);
+          if (vals.phone?.trim()) parts.push(`Phone is ${vals.phone.trim()}`);
+          if (parts.length) sendText(parts.join('. ') + '.');
+        }}
+      />
       <Stack direction="row" spacing={1} flexWrap="wrap">
         <Chip label="Summarize my pipeline" onClick={() => setInput('Summarize my pipeline this month.')} size="small" />
         <Chip label="Find contacts at ACME" onClick={() => setInput('Find relevant contacts at ACME and suggest next steps.')} size="small" />
