@@ -18,6 +18,7 @@ export default function AssistantChat() {
   const [stageAnchorEl, setStageAnchorEl] = useState<null | HTMLElement>(null);
   const [amountOpen, setAmountOpen] = useState(false);
   const [amountValue, setAmountValue] = useState('');
+  const [fieldDialog, setFieldDialog] = useState<{ open: boolean; label: string; type: 'text'|'email'|'tel'; phrasePrefix: string; value: string }>({ open: false, label: '', type: 'text', phrasePrefix: '', value: '' });
   
   const sendText = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -129,12 +130,22 @@ export default function AssistantChat() {
         const salesStages = ['Lead','Qualified','Proposal','Won','Lost'];
         const procurementStages = ['Sourcing','RFQ','Negotiation','Ordered','Received'];
         const stages = mode === 'procurement' ? procurementStages : mode === 'sales' ? salesStages : [];
+        const askText = lastAssistant!.content.toLowerCase();
+        const isContactAsk = askText.includes('create a contact') || (askText.includes('first name') && askText.includes('last name') && askText.includes('email'));
         return (
           <Stack direction="row" spacing={1} flexWrap="wrap">
             <Chip label="Sales" size="small" onClick={() => sendText('Sales')} />
             <Chip label="Procurement" size="small" onClick={() => sendText('Procurement')} />
             <Chip label="Pick Stage" size="small" onClick={(e) => setStageAnchorEl(e.currentTarget)} />
             <Chip label="Set Amount" size="small" onClick={() => { setAmountValue(''); setAmountOpen(true); }} />
+            {isContactAsk && (
+              <>
+                <Chip label="First name" size="small" onClick={() => setFieldDialog({ open: true, label: 'First name', type: 'text', phrasePrefix: 'First name is', value: '' })} />
+                <Chip label="Last name" size="small" onClick={() => setFieldDialog({ open: true, label: 'Last name', type: 'text', phrasePrefix: 'Last name is', value: '' })} />
+                <Chip label="Email" size="small" onClick={() => setFieldDialog({ open: true, label: 'Email', type: 'email', phrasePrefix: 'Email is', value: '' })} />
+                <Chip label="Phone" size="small" onClick={() => setFieldDialog({ open: true, label: 'Phone', type: 'tel', phrasePrefix: 'Phone is', value: '' })} />
+              </>
+            )}
             <Menu anchorEl={stageAnchorEl} open={!!stageAnchorEl} onClose={() => setStageAnchorEl(null)}>
               {mode === 'auto' && (
                 <>
@@ -172,6 +183,32 @@ export default function AssistantChat() {
                     setAmountOpen(false);
                   }
                 }} variant="contained">OK</Button>
+              </DialogActions>
+            </Dialog>
+            <Dialog open={fieldDialog.open} onClose={() => setFieldDialog(s => ({ ...s, open: false }))}>
+              <DialogTitle>Set {fieldDialog.label}</DialogTitle>
+              <DialogContent>
+                <TextField
+                  autoFocus
+                  margin="dense"
+                  label={fieldDialog.label}
+                  type={fieldDialog.type}
+                  fullWidth
+                  value={fieldDialog.value}
+                  onChange={(e) => setFieldDialog(s => ({ ...s, value: e.target.value }))}
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setFieldDialog(s => ({ ...s, open: false }))}>Cancel</Button>
+                <Button variant="contained" onClick={() => {
+                  const v = fieldDialog.value.trim();
+                  if (v) {
+                    setFieldDialog(s => ({ ...s, open: false }));
+                    sendText(`${fieldDialog.phrasePrefix} ${v}`);
+                  } else {
+                    setFieldDialog(s => ({ ...s, open: false }));
+                  }
+                }}>OK</Button>
               </DialogActions>
             </Dialog>
           </Stack>
