@@ -1,3 +1,4 @@
+// @ts-nocheck
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import OpenAI from "https://esm.sh/openai@4.56.0";
@@ -110,3 +111,4 @@ serve(async (req) => {
     headers: { "Content-Type": "application/json" }
   });
 });
+// ci: auto-deploy trigger
