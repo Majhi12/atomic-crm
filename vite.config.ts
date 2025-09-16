@@ -83,12 +83,12 @@ export default defineConfig({
     base: './',
     server: {
         host: true,
-        port: 5180,
+        port: 5173,
         strictPort: true,
         open: false,
         hmr: {
             host: '127.0.0.1',
-            clientPort: 5180,
+            clientPort: 5173,
             protocol: 'ws',
         },
     },
