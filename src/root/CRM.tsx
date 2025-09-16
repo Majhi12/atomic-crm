@@ -27,6 +27,7 @@ import {
 } from '../providers/supabase';
 import sales from '../sales';
 import { SettingsPage } from '../settings/SettingsPage';
+import AssistantChat from '../assistant/AssistantChat';
 import {
     ConfigurationContextValue,
     ConfigurationProvider,
@@ -62,7 +63,7 @@ const defaultLightTheme = deepmerge(defaultTheme, {
         },
     },
     components: {
-        RaFileInput: {
+    RaFileInput: {
             styleOverrides: {
                 root: {
                     '& .RaFileInput-dropZone': {
@@ -188,6 +189,7 @@ export const CRM = ({
                         path={SettingsPage.path}
                         element={<SettingsPage />}
                     />
+                    <Route path="/assistant" element={<AssistantChat />} />
                 </CustomRoutes>
                 <Resource name="deals" {...deals} />
                 <Resource name="contacts" {...contacts} />

@@ -22,9 +22,12 @@ jobs:
           supabase secrets set --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
             "PROJECT_URL=${{ secrets.PROJECT_URL }}" \
             "SERVICE_ROLE_KEY=${{ secrets.SERVICE_ROLE_KEY }}"
+          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+            supabase secrets set --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}"
+          fi
 
       - name: Deploy Edge Functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          supabase functions deploy users updatePassword --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy users updatePassword assistant --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
