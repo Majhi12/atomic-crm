@@ -124,11 +124,14 @@ const dataProviderWithCustomMethods = {
         // Update the is initialized cache
         getIsInitialized._is_initialized_cache = true;
 
+        const requiresConfirmation = !response.data.session;
+
         return {
             id: response.data.user.id,
             email,
             password,
-        };
+            requiresConfirmation,
+        } as any;
     },
     async salesCreate(body: SalesFormData) {
         const { data, error } = await supabase.functions.invoke<Sale>('users', {

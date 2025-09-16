@@ -142,7 +142,7 @@ const dataProviderWithCustomMethod: CrmDataProvider = {
         password,
         first_name,
         last_name,
-    }: SignUpData): Promise<{ id: string; email: string; password: string }> {
+    }: SignUpData): Promise<{ id: string; email: string; password: string; requiresConfirmation: boolean }> {
         const user = await baseDataProvider.create('sales', {
             data: {
                 email,
@@ -154,6 +154,7 @@ const dataProviderWithCustomMethod: CrmDataProvider = {
         return {
             ...user.data,
             password,
+            requiresConfirmation: false,
         };
     },
     async salesCreate({ ...data }: SalesFormData): Promise<Sale> {

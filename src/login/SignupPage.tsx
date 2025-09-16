@@ -32,13 +32,18 @@ export const SignupPage = () => {
             return dataProvider.signUp(data);
         },
         onSuccess: data => {
+            if ((data as any).requiresConfirmation) {
+                notify('Account created. Please check your email to confirm.', { type: 'info' });
+                // redirect to login page after signup when confirmation is needed
+                window.location.href = '/login';
+                return;
+            }
             login({
                 email: data.email,
                 password: data.password,
                 redirectTo: '/contacts',
             }).then(() => {
                 notify('Initial user successfully created');
-                // FIXME: We should probably provide a hook for that in the ra-core package
                 queryClient.invalidateQueries({
                     queryKey: ['auth', 'canAccess'],
                 });
