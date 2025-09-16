@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { askAssistant } from './askAssistant';
 
 export default function AssistantChat() {
@@ -38,7 +40,9 @@ export default function AssistantChat() {
           {messages.map((m, i) => (
             <Box key={i} sx={{ textAlign: m.role === 'user' ? 'right' : 'left' }}>
               <Typography variant="body2" color="text.secondary">{m.role}</Typography>
-              <Typography variant="body1">{m.content}</Typography>
+              <Typography variant="body1" component="div">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+              </Typography>
             </Box>
           ))}
           <div ref={bottomRef} />
