@@ -36,9 +36,22 @@ serve(async (req) => {
     { type: "function", function: { name: "search_contacts", description: "Full-text search contacts by name/email/company.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
     { type: "function", function: { name: "create_contact", description: "Create a new contact.", parameters: { type: "object", properties: { first_name: { type: "string" }, last_name: { type: "string" }, email: { type: "string" }, phone: { type: "string", nullable: true }, company_id: { type: "number", nullable: true } }, required: ["first_name","last_name","email"] } } },
     { type: "function", function: { name: "add_note", description: "Attach a note to a contact/company/deal.", parameters: { type: "object", properties: { entity_type: { enum: ["contact","company","deal"] }, entity_id: { type: "number" }, text: { type: "string" } }, required: ["entity_type","entity_id","text"] } } },
-    { type: "function", function: { name: "create_deal", description: "Create a new deal/opportunity.", parameters: { type: "object", properties: { title: { type: "string" }, company_id: { type: "number" }, contact_id: { type: "number", nullable: true }, amount: { type: "number", nullable: true }, stage: { type: "string", nullable: true } }, required: ["title","company_id"] } } },
+    { type: "function", function: { name: "search_notes", description: "Search notes by text and/or entity filter.", parameters: { type: "object", properties: { query: { type: "string", nullable: true }, entity_type: { enum: ["contact","company","deal"], nullable: true }, entity_id: { type: "number", nullable: true } }, required: [] } } },
+    { type: "function", function: { name: "create_deal", description: "Create a new deal/opportunity (sales or procurement).",
+      parameters: { type: "object", properties: {
+        title: { type: "string" },
+        deal_kind: { enum: ["sales","procurement","partnership"], nullable: true },
+        company_id: { type: "number" },
+        vendor_company_id: { type: "number", nullable: true },
+        contact_id: { type: "number", nullable: true },
+        amount: { type: "number", nullable: true },
+        cost: { type: "number", nullable: true },
+        stage: { type: "string", nullable: true }
+      }, required: ["title","company_id"] }
+    } },
     { type: "function", function: { name: "update_deal_stage", description: "Move a deal to a new pipeline stage.", parameters: { type: "object", properties: { deal_id: { type: "number" }, stage: { type: "string" } }, required: ["deal_id","stage"] } } },
-    { type: "function", function: { name: "pipeline_summary", description: "Summarize pipeline value and counts for advice.", parameters: { type: "object", properties: { time_window: { type: "string", nullable: true } }, required: [] } } }
+    { type: "function", function: { name: "pipeline_summary", description: "Summarize pipeline value and counts for advice.", parameters: { type: "object", properties: { kind: { enum: ["sales","procurement","partnership"], nullable: true }, time_window: { type: "string", nullable: true } }, required: [] } } },
+    { type: "function", function: { name: "suggest_followup_email", description: "Draft a concise follow-up email using recent notes and current stage.", parameters: { type: "object", properties: { entity_type: { enum: ["contact","company","deal"] }, entity_id: { type: "number" } }, required: ["entity_type","entity_id"] } } }
   ] as any[];
 
   if (tavilyKey) {
