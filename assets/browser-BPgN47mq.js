@@ -1,0 +1,2 @@
+var n=Object.defineProperty;var r=(t,s)=>n(t,"name",{value:s,configurable:!0});import{ag as u}from"./index-B9_qqFnm.js";var e,o;function a(){return o||(o=1,e=r(function(){throw new Error("ws does not work in the browser. Browser clients must use the native WebSocket object")},"browser$2")),e}r(a,"requireBrowser");var w=a();const b=u(w),f=Object.freeze(Object.defineProperty({__proto__:null,default:b},Symbol.toStringTag,{value:"Module"}));export{f as b};
+//# sourceMappingURL=browser-BPgN47mq.js.map
