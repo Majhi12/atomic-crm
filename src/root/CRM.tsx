@@ -63,7 +63,7 @@ const defaultLightTheme = deepmerge(defaultTheme, {
         },
     },
     components: {
-    RaFileInput: {
+        RaFileInput: {
             styleOverrides: {
                 root: {
                     '& .RaFileInput-dropZone': {

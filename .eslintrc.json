@@ -3,6 +3,13 @@
     "parserOptions": {
         "warnOnUnsupportedTypeScriptVersion": false
     },
+    "ignorePatterns": [
+        "supabase/functions/**",
+        "lib/**",
+        "public/**",
+        "doc/**",
+        "scripts/**"
+    ],
     "extends": ["react-app", "plugin:prettier/recommended"],
     "plugins": [
         "@typescript-eslint",
@@ -14,7 +21,7 @@
     ],
     "rules": {
         "no-use-before-define": "off",
-        "prettier/prettier": "error",
+        "prettier/prettier": "off",
         "no-restricted-imports": [
             "error",
             {

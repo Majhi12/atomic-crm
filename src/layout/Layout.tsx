@@ -4,6 +4,7 @@ import { Error, Loading, CheckForApplicationUpdate } from 'react-admin';
 import { ErrorBoundary } from 'react-error-boundary';
 
 import Header from './Header';
+import { AssistantProvider } from '../assistant/AssistantContext';
 
 export const Layout = ({ children }: { children: ReactNode }) => (
     <>
@@ -12,7 +13,9 @@ export const Layout = ({ children }: { children: ReactNode }) => (
         <Container sx={{ maxWidth: { xl: 1280 } }}>
             <main id="main-content">
                 <ErrorBoundary FallbackComponent={Error}>
-                    <Suspense fallback={<Loading />}>{children}</Suspense>
+                    <AssistantProvider>
+                        <Suspense fallback={<Loading />}>{children}</Suspense>
+                    </AssistantProvider>
                 </ErrorBoundary>
             </main>
         </Container>

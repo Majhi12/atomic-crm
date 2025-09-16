@@ -12,4 +12,5 @@ export default {
     tabWidth: 4,
     trailingComma: 'es5',
     useTabs: false,
+    endOfLine: 'auto',
 };

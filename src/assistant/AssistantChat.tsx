@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, Chip, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, Alert } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askAssistant } from './askAssistant';
+import { useAssistantContext } from './AssistantContext';
+import { useAssistantStore, AssistantMessage, AssistantState } from './AssistantStore';
 
 export default function AssistantChat() {
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const messages = useAssistantStore((s: AssistantState) => s.messages);
+  const setMessages = useAssistantStore((s: AssistantState) => s.setMessages);
+  const addMessage = useAssistantStore((s: AssistantState) => s.addMessage);
+  const clear = useAssistantStore((s: AssistantState) => s.clear);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const { mode, setMode, scope } = useAssistantContext();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -16,17 +22,21 @@ export default function AssistantChat() {
 
   const send = async () => {
     if (!input.trim() || loading) return;
-    const next = [...messages, { role: 'user' as const, content: input }];
-    setMessages(next);
+  const next = [...messages, { role: 'user' as const, content: input }];
+  setMessages(next);
     setInput('');
     setLoading(true);
     try {
-      const data = await askAssistant(next);
+      const contextMsg = {
+        role: 'system' as const,
+        content: `Context: assistant_mode=${mode}; app_scope=${scope}. If creating or updating deals, default deal_kind to the selected mode when it makes sense. Prefer concise Markdown in replies.`,
+      };
+      const data = await askAssistant(messages.length === 0 ? [contextMsg, ...next] : next);
       const content = data?.content ?? (typeof data === 'string' ? data : JSON.stringify(data));
-      setMessages(m => [...m, { role: 'assistant', content }]);
+      addMessage({ role: 'assistant', content });
     } catch (e: any) {
       const msg = e?.message || e?.toString?.() || 'Unknown error';
-      setMessages(m => [...m, { role: 'assistant', content: `Sorry, something went wrong. ${msg}` }]);
+      addMessage({ role: 'assistant', content: `Sorry, something went wrong. ${msg}` });
     } finally {
       setLoading(false);
     }
@@ -34,22 +44,68 @@ export default function AssistantChat() {
 
   return (
     <Stack spacing={2} sx={{ p: 2 }}>
-      <Typography variant="h5">Assistant</Typography>
+      <Stack direction="row" alignItems="center" spacing={2}>
+        <Typography variant="h5" sx={{ flexGrow: 1 }}>Assistant</Typography>
+        <ToggleButtonGroup size="small" value={mode} exclusive onChange={(_, v) => v && setMode(v)}>
+          <ToggleButton value="auto">Auto</ToggleButton>
+          <ToggleButton value="sales">Sales</ToggleButton>
+          <ToggleButton value="procurement">Procurement</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
       <Paper variant="outlined" sx={{ p: 2, height: 400, overflowY: 'auto' }}>
         <Stack spacing={1}>
-          {messages.map((m, i) => (
-            <Box key={i} sx={{ textAlign: m.role === 'user' ? 'right' : 'left' }}>
-              <Typography variant="body2" color="text.secondary">{m.role}</Typography>
-              <Typography variant="body1" component="div">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-              </Typography>
-            </Box>
-          ))}
+          {messages.map((m: AssistantMessage, i: number) => {
+            const isAsk = m.role === 'assistant' && m.content.trim().startsWith('[ASK]');
+            return (
+              <Box key={i} sx={{ textAlign: m.role === 'user' ? 'right' : 'left' }}>
+                <Typography variant="body2" color="text.secondary">{m.role}</Typography>
+                {isAsk ? (
+                  <Alert severity="info" variant="outlined" sx={{ display: 'inline-block', textAlign: 'left' }}>
+                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Need more info</Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      {m.content.replace(/^\[ASK\]\s*/,'')}
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="contained" onClick={() => {
+                        // Quick confirm: interpret as affirmative
+                        setInput('Yes');
+                      }}>Approve</Button>
+                      <Button size="small" variant="outlined" onClick={() => {
+                        setInput('No');
+                      }}>Skip</Button>
+                    </Stack>
+                  </Alert>
+                ) : (
+                  <Typography variant="body1" component="div">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({node, children, ...props}) => (
+                          <a {...props} target="_blank" rel="noopener noreferrer">{children}</a>
+                        ),
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
+          {loading && (
+            <Typography variant="body2" color="text.secondary">Assistant is typing…</Typography>
+          )}
           <div ref={bottomRef} />
         </Stack>
       </Paper>
+      <Stack direction="row" spacing={1} flexWrap="wrap">
+        <Chip label="Summarize my pipeline" onClick={() => setInput('Summarize my pipeline this month.')} size="small" />
+        <Chip label="Find contacts at ACME" onClick={() => setInput('Find relevant contacts at ACME and suggest next steps.')} size="small" />
+        <Chip label="Draft follow-up email" onClick={() => setInput('Draft a follow-up email for my last note on the current deal.')} size="small" />
+      </Stack>
       <Stack direction="row" spacing={1}>
         <TextField fullWidth size="small" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send(); }} placeholder="Ask the CRM assistant..." />
+        <Button variant="outlined" onClick={() => clear()} disabled={loading}>Clear</Button>
         <Button variant="contained" onClick={send} disabled={loading}>Send</Button>
       </Stack>
     </Stack>

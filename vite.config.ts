@@ -81,6 +81,12 @@ export default defineConfig({
         'process.env': process.env,
     },
     base: './',
+    server: {
+        host: '127.0.0.1',
+        port: 5180,
+        strictPort: true,
+        open: true,
+    },
     esbuild: {
         keepNames: true,
     },

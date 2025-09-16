@@ -1,4 +1,4 @@
-import { Grid, Stack } from '@mui/material';
+import { Alert, Box, CircularProgress, Grid, Stack, Typography } from '@mui/material';
 import { DashboardActivityLog } from './DashboardActivityLog';
 import { DealsChart } from './DealsChart';
 import { HotContacts } from './HotContacts';
@@ -13,27 +13,45 @@ export const Dashboard = () => {
         data: dataContact,
         total: totalContact,
         isPending: isPendingContact,
+        error: errorContacts,
     } = useGetList<Contact>('contacts', {
         pagination: { page: 1, perPage: 1 },
     });
 
-    const { total: totalContactNotes, isPending: isPendingContactNotes } =
+    const { total: totalContactNotes, isPending: isPendingContactNotes, error: errorNotes } =
         useGetList<ContactNote>('contactNotes', {
             pagination: { page: 1, perPage: 1 },
         });
 
-    const { total: totalDeal, isPending: isPendingDeal } = useGetList<Contact>(
+    const { total: totalDeal, isPending: isPendingDeal, error: errorDeals } = useGetList<Contact>(
         'deals',
         {
             pagination: { page: 1, perPage: 1 },
         }
     );
 
-    const isPending =
-        isPendingContact || isPendingContactNotes || isPendingDeal;
+    const isPending = isPendingContact || isPendingContactNotes || isPendingDeal;
+    const anyError = errorContacts || errorNotes || errorDeals;
 
     if (isPending) {
-        return null;
+        return (
+            <Box display="flex" alignItems="center" justifyContent="center" sx={{ height: 360 }}>
+                <Stack alignItems="center" spacing={2}>
+                    <CircularProgress size={28} />
+                    <Typography variant="body2" color="text.secondary">Loading dashboard…</Typography>
+                </Stack>
+            </Box>
+        );
+    }
+
+    if (anyError) {
+        return (
+            <Box sx={{ p: 2 }}>
+                <Alert severity="error">
+                    Unable to load dashboard data. {String((anyError as any)?.message || anyError)}
+                </Alert>
+            </Box>
+        );
     }
 
     if (!totalContact) {

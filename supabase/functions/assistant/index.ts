@@ -78,10 +78,12 @@ serve(async (req) => {
       [
   'You are the in-app CRM assistant. Format responses as concise Markdown with short headings, bullet lists, and proper [links](https://example.com).',
         '- Ask clarifying questions when queries are ambiguous (e.g., geography, industry, role).',
-        '- When you are about to WRITE data (create contact, add note, create deal, update stage), propose the plan and ask the user to confirm before executing.',
+        '- Before any WRITE (create contact, add note, create deal, update stage), briefly confirm intent and required fields if missing. Ask one short question, then wait.',
+        '- When you need missing details, start your message with "[ASK] Need more info:" followed by one short question. Then wait for the user to reply.',
+        '- When you must confirm before a write, start with "[ASK] Confirm to proceed?" then summarize the action in one sentence and wait for Yes/No.',
         '- When searching for new leads not in the CRM, use web_search (if available), summarize findings, and propose which to add as contacts.',
         '- For CRM queries (find contacts, notes, deals), prefer CRM tools first.',
-        '- Suggest deal creation when user intent implies an opportunity; ask for amount/stage if missing.',
+        '- Suggest deal creation when user intent implies an opportunity; ask for amount/budget, counterpart, and desired stage if missing.',
         '- Keep answers concise, then offer next actions as options.',
         'Deals can be sales (revenue) or procurement (spend). Choose the kind based on user wording. Sales stages: Lead→Qualified→Proposal→Won/Lost. Procurement stages: Sourcing→RFQ→Negotiation→Ordered→Received. Use tools for database actions; be concise; ask one brief clarifying question if needed.',
       ].join(' '),
@@ -131,17 +133,28 @@ serve(async (req) => {
         if (eid) query = query.eq('entity_id', eid);
         toolResult = await query;
         break; }
-      case 'create_contact':
+      case 'create_contact': {
+        const first = String(args.first_name || '').trim();
+        const last  = String(args.last_name || '').trim();
+        const email = String(args.email || '').trim();
+        if (!first || !last || !email) {
+          toolResult = { ask: 'To create a contact, please provide first name, last name, and email.' };
+          break;
+        }
         toolResult = await supabase.from('contacts').insert({
-          first_name: args.first_name,
-          last_name:  args.last_name,
-          email:      args.email,
+          first_name: first,
+          last_name:  last,
+          email,
           phone:      args.phone ?? null,
           company_id: args.company_id ?? null,
           owner_id:   user.id
         }).select().single();
-        break;
+        break; }
       case 'add_note':
+        if (!args?.entity_type || !args?.entity_id || !String(args?.text || '').trim()) {
+          toolResult = { ask: 'Which entity should I attach the note to (contact/company/deal and its id)? What should the note say?' };
+          break;
+        }
         toolResult = await supabase.from('notes').insert({
           entity_type: args.entity_type,
           entity_id:   args.entity_id,
@@ -152,6 +165,10 @@ serve(async (req) => {
       case 'create_deal': {
         const deal_kind = String(args.deal_kind || 'sales');
         let stage = args.stage ? String(args.stage) : undefined;
+        if (!args?.title || !args?.company_id) {
+          toolResult = { ask: 'To create a deal, what is the title and company? Is this sales or procurement, and any amount/budget?' };
+          break;
+        }
         if (!stage) {
           // pick first stage for kind
           const st = await supabase
@@ -176,13 +193,17 @@ serve(async (req) => {
         };
         toolResult = await supabase.from('deals').insert(payload).select().single();
         break; }
-      case 'update_deal_stage':
+      case 'update_deal_stage': {
+        if (!args?.deal_id || !args?.stage) {
+          toolResult = { ask: 'Which deal (id) should I move and to what stage?' };
+          break;
+        }
         toolResult = await supabase
           .from('deals')
           .update({ stage: args.stage })
           .eq('id', args.deal_id)
           .select().single();
-        break;
+        break; }
       case 'pipeline_summary': {
         const kind = args.kind ? String(args.kind) : undefined;
         const tw = String(args.time_window || 'month');

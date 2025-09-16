@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient, SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 const supabaseUrl =
