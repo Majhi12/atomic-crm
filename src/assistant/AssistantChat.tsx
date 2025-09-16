@@ -373,7 +373,7 @@ export default function AssistantChat() {
         open={missingOpen}
         initial={missingInitial}
         onCancel={() => setMissingOpen(false)}
-        onConfirm={(vals) => {
+        onConfirm={(vals: { company_name?: string; email?: string; phone?: string }) => {
           setMissingOpen(false);
           const parts = [] as string[];
           if (vals.company_name?.trim()) parts.push(`Company name is ${vals.company_name.trim()}`);
