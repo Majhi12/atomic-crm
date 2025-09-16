@@ -82,10 +82,15 @@ export default defineConfig({
     },
     base: './',
     server: {
-        host: '127.0.0.1',
+        host: true,
         port: 5180,
         strictPort: true,
-        open: true,
+        open: false,
+        hmr: {
+            host: '127.0.0.1',
+            clientPort: 5180,
+            protocol: 'ws',
+        },
     },
     esbuild: {
         keepNames: true,
